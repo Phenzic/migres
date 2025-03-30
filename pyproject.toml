@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
-    {name = "Your Name", email = "your@email.com"},
+    {name = "Mayowa Ogungbola", email = "ogungbolamayowa@email.com"},
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -25,6 +25,8 @@ classifiers = [
 ]
 keywords = ["migration", "database", "mariadb", "postgresql", "supabase"]
 dependencies = [
+    "python-dotenv>=0.19.0",
+    "pydantic>=1.8.0",
     "pymysql>=1.0.0",
     "psycopg2-binary>=2.9.0",
     "pandas>=1.3.0",

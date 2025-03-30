@@ -4,6 +4,7 @@ from ..connectors.postgres_connector import PostgresConnector
 from ..core.data_processor import DataProcessor
 from ..models.migration import MigrationConfig
 
+
 class MigrationManager:
     def __init__(self, config: MigrationConfig):
         self.config = config
