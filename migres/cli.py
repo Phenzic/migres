@@ -5,7 +5,7 @@ from core.migrator import MigrationManager
 from models.migration import MigrationConfig
 from dotenv import load_dotenv
 
-__version__ = "0.1.0"  # Match the version in pyproject.toml
+__version__ = "0.1.0.dev1"  # Match the version in pyproject.toml
 
 def main():
     parser = argparse.ArgumentParser(description='Database migration tool')
