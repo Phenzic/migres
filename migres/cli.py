@@ -5,35 +5,51 @@ from core.migrator import MigrationManager
 from models.migration import MigrationConfig
 from dotenv import load_dotenv
 
+__version__ = "0.1.0"  # Match the version in pyproject.toml
+
 def main():
     parser = argparse.ArgumentParser(description='Database migration tool')
-    parser.add_argument('--init', action='store_true', 
-                       help='Generate template config files')
-    parser.add_argument('--no-download', action='store_true', 
-                       help='Process and migrate data without saving files locally')
+    parser.add_argument('--version', '-v', action='store_true', help='Show version information')
+    subparsers = parser.add_subparsers(dest='command', help='Commands')
     
+    # Init command
+    init_parser = subparsers.add_parser('init', help='Initialize configuration files')
+    # Run command
+    run_parser = subparsers.add_parser('run', help='Run the migration')
+    
+    run_parser.add_argument('--no-download', action='store_true', 
+                           help='Process and migrate data without saving files locally')
+    
+    # Parse arguments
     args = parser.parse_args()
     
-    if args.init:
+    # Check for version flag first
+    if hasattr(args, 'version') and args.version:
+        print(f"migres version {__version__}")
+        return 0
+    
+    # Handle commands
+    if args.command == 'init':
+        # Your initialization logic here
+        print("Initializing configuration files...")
         init_configs()
-        return
+        return 0
+    elif args.command == 'run':
+        # Your migration logic here
+        config = load_config()
+        if not config or not hasattr(config, 'mariadb_config') or config.mariadb_config is None:
+            print("Error: MariaDB configuration is missing or invalid.")
+            print("Please check your configuration or run 'migres init' to create a new configuration.")
+            return 1
         
-    # Load environment variables
-    if not load_dotenv():
-        print("Warning: No .env file found. Using system environment variables")
-    
-    # Load configuration
-    config = MigrationConfig.load_from_files(
-        main_config_path="./config.ini",
-        type_config_path="./type_config.ini",
-        uuid_config_path="./uuid_config.ini",
-        schema_config_path="./table_schema.ini",
-        constraints_path="./constraints.ini"
-    )
-    
-    # Run migration
-    migrator = MigrationManager(config)
-    migrator.run_migration()
+        migrator = MigrationManager(config)
+        migrator.run(no_download=getattr(args, 'no_download', False))
+        return 0
+    else:
+        # If no command is provided, show version
+        print(f"migres version {__version__}")
+        print("A database migration tool")
+        return 0
 
 def init_configs():
     """Create template config files in current directory"""
@@ -99,10 +115,26 @@ MARIADB_HOST=localhost
 MARIADB_USER=root
 MARIADB_PASSWORD=yourpassword
 MARIADB_DATABASE1=source_db
-MARIADB_DATABASE3=another_db
 SUPABASE_CONNECTION_STRING=postgresql://user:password@host:5432/db
 """)
         print("Created .env.example - rename to .env and fill in your credentials")
+
+def load_config():
+    """Load configuration from environment variables"""
+    from config.config import DBSettings
+    from dotenv import load_dotenv
+    
+    load_dotenv()
+    
+    # Create a config object with database settings
+    db_settings = DBSettings()
+    
+    # Create a migration config object
+    from models.migration import MigrationConfig
+    config = MigrationConfig()
+    config.mariadb_config = db_settings
+    
+    return config
 
 if __name__ == "__main__":
     main()

@@ -31,7 +31,6 @@ class DBSettings(BaseSettings):
     mariadb_user: str = os.getenv("MARIADB_USER")
     mariadb_password: str = os.getenv("MARIADB_PASSWORD")
     mariadb_database1: str = os.getenv("MARIADB_DATABASE1")
-    mariadb_database3: str = os.getenv("MARIADB_DATABASE3")
     supabase_connection: str = os.getenv("SUPABASE_CONNECTION_STRING")
 
     class Config:
