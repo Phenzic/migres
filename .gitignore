@@ -63,3 +63,5 @@ venv.bak/
 # Config files
 *.ini
 *.cfg
+
+/~/
