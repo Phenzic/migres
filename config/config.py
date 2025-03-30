@@ -11,7 +11,7 @@ def main():
     
     # Load configuration
     config = MigrationConfig.load_from_files(
-        main_config_path="./doujins_config.ini",
+        main_config_path="./config.ini",
         type_config_path="./type_config.ini",
         uuid_config_path="./uuid_config.ini",
         schema_config_path="./table_schema.ini",
