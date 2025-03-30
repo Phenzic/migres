@@ -6,12 +6,12 @@ with open("README.md", "r", encoding="utf-8") as fh:
 setup(
     name="migrator",
     version="0.1.0",
-    author="Your Name",
-    author_email="your@email.com",
+    author="Mayowa Ogungbola",
+    author_email="ogungbolamayowa@email.com",
     description="Database migration tool for MariaDB to PostgreSQL/Supabase",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/migres",
+    url="https://github.com/Phenzic/migres",
     packages=find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
