@@ -1,6 +1,6 @@
 import argparse
-from .core.migrator import MigrationManager
-from .models.migration import MigrationConfig
+from core.migrator import MigrationManager
+from models.migration import MigrationConfig
 
 def main():
     # Parse command line arguments

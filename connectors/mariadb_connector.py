@@ -1,7 +1,7 @@
 import pymysql
 import pandas as pd
 from typing import Dict, Any, List, Optional
-from ..models.migration_config import DatabaseConfig
+from ..models.migration import DatabaseConfig
 
 class MariaDBConnector:
     def __init__(self, config: DatabaseConfig):

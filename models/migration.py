@@ -1,30 +1,37 @@
-import psycopg2
-from psycopg2.extras import execute_values
+from dataclasses import dataclass
 from typing import Dict, List, Any
-from ..models.migration_config import DatabaseConfig
+import configparser
 
-class PostgresConnector:
-    def __init__(self, connection_string: str):
-        self.connection_string = connection_string
-        self.connection = None
-        
-    def connect(self) -> None:
-        """Establish connection to PostgreSQL"""
-        self.connection = psycopg2.connect(self.connection_string)
-        
-    def disconnect(self) -> None:
-        """Close the database connection"""
-        if self.connection and not self.connection.closed:
-            self.connection.close()
-            
-    def create_tables(self, schema_definitions: Dict[str, Any]) -> None:
-        """Create tables based on schema definitions"""
-        pass
-        
-    def insert_data(self, table_name: str, data: List[Dict[str, Any]], batch_size: int = 100000) -> bool:
-        """Insert data into a table"""
-        pass
-        
-    def apply_constraints(self, constraints_config: Dict[str, Any]) -> None:
-        """Apply database constraints"""
+@dataclass
+class DatabaseConfig:
+    host: str
+    user: str
+    password: str
+    database: str
+    connect_timeout: int = 28800
+    read_timeout: int = 28800
+    write_timeout: int = 28800
+    charset: str = "utf8mb4"
+
+@dataclass
+class PostgresConfig:
+    connection_string: str
+
+@dataclass
+class MigrationConfig:
+    mariadb_config: DatabaseConfig
+    postgres_config: PostgresConfig
+    tables_to_export: Dict[str, List[str]]
+    columns_to_export: Dict[str, List[str]]
+    schema_definitions: Dict[str, Any]
+    type_conversions: Dict[str, Any]
+    uuid_config: Dict[str, Any]
+    constraints: Dict[str, Any]
+    
+    @classmethod
+    def load_from_files(cls, main_config_path: str, type_config_path: str,
+                       uuid_config_path: str, schema_config_path: str,
+                       constraints_path: str) -> 'MigrationConfig':
+        """Create config from ini files"""
+        # Implementation to load all config files
         pass

@@ -1,30 +1,24 @@
-import psycopg2
-from psycopg2.extras import execute_values
-from typing import Dict, List, Any
-from ..models.migration_config import DatabaseConfig
+import pandas as pd
+import uuid
+from typing import Dict, Any, List
+from ..config.config import ConfigManager
 
-class PostgresConnector:
-    def __init__(self, connection_string: str):
-        self.connection_string = connection_string
-        self.connection = None
+class DataProcessor:
+    def __init__(self, config_manager: ConfigManager):
+        self.config_manager = config_manager
         
-    def connect(self) -> None:
-        """Establish connection to PostgreSQL"""
-        self.connection = psycopg2.connect(self.connection_string)
-        
-    def disconnect(self) -> None:
-        """Close the database connection"""
-        if self.connection and not self.connection.closed:
-            self.connection.close()
-            
-    def create_tables(self, schema_definitions: Dict[str, Any]) -> None:
-        """Create tables based on schema definitions"""
+    def convert_types(self, df: pd.DataFrame, table_name: str) -> pd.DataFrame:
+        """Convert column types based on configuration"""
         pass
         
-    def insert_data(self, table_name: str, data: List[Dict[str, Any]], batch_size: int = 100000) -> bool:
-        """Insert data into a table"""
+    def convert_uuids(self, df: pd.DataFrame, table_name: str) -> pd.DataFrame:
+        """Convert IDs to UUIDs"""
         pass
         
-    def apply_constraints(self, constraints_config: Dict[str, Any]) -> None:
-        """Apply database constraints"""
+    def clean_data(self, df: pd.DataFrame, table_name: str) -> pd.DataFrame:
+        """Clean and prepare data for insertion"""
+        pass
+        
+    def process_table_data(self, table_name: str, df: pd.DataFrame) -> List[Dict[str, Any]]:
+        """Full processing pipeline for table data"""
         pass

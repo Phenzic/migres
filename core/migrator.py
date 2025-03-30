@@ -1,30 +1,38 @@
-import psycopg2
-from psycopg2.extras import execute_values
-from typing import Dict, List, Any
-from ..models.migration_config import DatabaseConfig
+from typing import Dict, Any
+from ..connectors.mariadb_connector import MariaDBConnector
+from ..connectors.postgres_connector import PostgresConnector
+from ..core.data_processor import DataProcessor
+from ..models.migration import MigrationConfig
 
-class PostgresConnector:
-    def __init__(self, connection_string: str):
-        self.connection_string = connection_string
-        self.connection = None
+class MigrationManager:
+    def __init__(self, config: MigrationConfig):
+        self.config = config
+        self.mariadb = MariaDBConnector(config.mariadb_config)
+        self.postgres = PostgresConnector(config.postgres_config.connection_string)
+        self.data_processor = DataProcessor(config.config_manager)
         
-    def connect(self) -> None:
-        """Establish connection to PostgreSQL"""
-        self.connection = psycopg2.connect(self.connection_string)
-        
-    def disconnect(self) -> None:
-        """Close the database connection"""
-        if self.connection and not self.connection.closed:
-            self.connection.close()
+    def run_migration(self) -> None:
+        """Execute the full migration process"""
+        try:
+            self.mariadb.connect()
+            self.postgres.connect()
             
-    def create_tables(self, schema_definitions: Dict[str, Any]) -> None:
-        """Create tables based on schema definitions"""
-        pass
-        
-    def insert_data(self, table_name: str, data: List[Dict[str, Any]], batch_size: int = 100000) -> bool:
-        """Insert data into a table"""
-        pass
-        
-    def apply_constraints(self, constraints_config: Dict[str, Any]) -> None:
-        """Apply database constraints"""
+            # Create tables in PostgreSQL
+            self.postgres.create_tables(self.config.schema_definitions)
+            
+            # Process each table
+            for db_name, tables in self.config.tables_to_export.items():
+                self.mariadb.select_database(db_name)
+                for table in tables:
+                    self._process_table(table)
+                    
+            # Apply constraints
+            self.postgres.apply_constraints(self.config.constraints)
+            
+        finally:
+            self.mariadb.disconnect()
+            self.postgres.disconnect()
+            
+    def _process_table(self, table_name: str) -> None:
+        """Process a single table"""
         pass
