@@ -4,7 +4,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="migrator",
+    name="migres",
     version="0.1.0",
     author="Mayowa Ogungbola",
     author_email="ogungbolamayowa@email.com",
@@ -27,7 +27,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "migrator=migres.cli:main",
+            "migres=migres.cli:main",
         ],
     },
 )

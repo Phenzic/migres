@@ -1,17 +1,26 @@
 import argparse
 import shutil
 from pathlib import Path
-from .core.migrator import MigrationManager
-from .models.migration import MigrationConfig
+from core.migrator import MigrationManager
+from models.migration import MigrationConfig
+from dotenv import load_dotenv
 
 def main():
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description='Extract and migrate data from MariaDB to Supabase')
+    parser = argparse.ArgumentParser(description='Database migration tool')
+    parser.add_argument('--init', action='store_true', 
+                       help='Generate template config files')
     parser.add_argument('--no-download', action='store_true', 
                        help='Process and migrate data without saving files locally')
-    parser.add_argument('--init', action='store_true', 
-                   help='Create template config files in current directory')
+    
     args = parser.parse_args()
+    
+    if args.init:
+        init_configs()
+        return
+        
+    # Load environment variables
+    if not load_dotenv():
+        print("Warning: No .env file found. Using system environment variables")
     
     # Load configuration
     config = MigrationConfig.load_from_files(
@@ -21,10 +30,10 @@ def main():
         schema_config_path="./table_schema.ini",
         constraints_path="./constraints.ini"
     )
-    import argparse
-import os
-from pathlib import Path
-from dotenv import load_dotenv
+    
+    # Run migration
+    migrator = MigrationManager(config)
+    migrator.run_migration()
 
 def init_configs():
     """Create template config files in current directory"""
@@ -95,37 +104,5 @@ SUPABASE_CONNECTION_STRING=postgresql://user:password@host:5432/db
 """)
         print("Created .env.example - rename to .env and fill in your credentials")
 
-def main():
-    parser = argparse.ArgumentParser(description='Database migration tool')
-    parser.add_argument('--init', action='store_true', 
-                       help='Generate template config files')
-    
-    args = parser.parse_args()
-    
-    if args.init:
-        init_configs()
-        return
-        
-    # Load environment variables
-    if not load_dotenv():
-        print("Warning: No .env file found. Using system environment variables")
-    
-    # Run migration
-    migrator = MigrationManager(config)
-    migrator.run_migration()
-
-# In your cli.py
-
-
-def init_configs():
-    """Create template config files in current directory"""
-    template_dir = Path(__file__).parent / "config" / "templates"
-    for template in template_dir.glob("*.example"):
-        dest = Path.cwd() / template.name.replace(".example", "")
-        if not dest.exists():
-            shutil.copy(template, dest)
-            print(f"Created {dest}")
-        else:
-            print(f"{dest} already exists - skipping")
 if __name__ == "__main__":
     main()

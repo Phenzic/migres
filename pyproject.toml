@@ -39,5 +39,8 @@ Documentation = "https://github.com/Phenzic/migres#readme"
 Issues = "https://github.com/Phenzic/migres/issues"
 Source = "https://github.com/Phenzic/migres"
 
+[project.scripts]
+migres = "migres.cli:main"
+
 [tool.setuptools.packages]
 find = {}

@@ -1,8 +1,8 @@
 from typing import Dict, Any
-from ..connectors.mariadb_connector import MariaDBConnector
-from ..connectors.postgres_connector import PostgresConnector
-from ..core.data_processor import DataProcessor
-from ..models.migration import MigrationConfig
+from connectors.mariadb_connector import MariaDBConnector
+from connectors.postgres_connector import PostgresConnector
+from core.data_processor import DataProcessor
+from models.migration import MigrationConfig
 
 
 class MigrationManager:
