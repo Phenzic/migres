@@ -1,7 +1,7 @@
 import pandas as pd
 import uuid
 from typing import Dict, Any, List
-from ..config.config import ConfigManager
+from config.config import ConfigManager
 
 class DataProcessor:
     def __init__(self, config_manager: ConfigManager):

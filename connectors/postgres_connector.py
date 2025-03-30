@@ -1,7 +1,7 @@
 import psycopg2
 from psycopg2.extras import execute_values
 from typing import Dict, List, Any
-from ..models.migration import DatabaseConfig
+from models.migration import DatabaseConfig
 
 class PostgresConnector:
     def __init__(self, connection_string: str):
