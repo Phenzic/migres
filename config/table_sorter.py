@@ -151,26 +151,34 @@ class TableSorter:
         # Reverse the result to get correct order (dependencies first)
         return list(reversed(result))
     
-    def _log_migration_order(self, table_order: List[str]) -> None:
-        """
-        Log the migration order to maria_config.ini
-        """
-        if not self.maria_config.has_section('migration'):
-            self.maria_config.add_section('migration')
-        
-        # Get existing values
-        force_early = self._get_force_early_tables()
-        force_late = self._get_force_late_tables()
-        custom_order = self._get_custom_order_tables()
-        
-        # Update the config with the current values
-        self.maria_config.set('migration', 'force_early', ', '.join(force_early))
-        self.maria_config.set('migration', 'force_late', ', '.join(force_late))
-        self.maria_config.set('migration', 'custom_order', ', '.join(custom_order))
-        
-        # Add the computed migration order
-        self.maria_config.set('migration', 'computed_order', ', '.join(table_order))
-        
-        # Save the updated config
-        with open('maria_config.ini', 'w') as configfile:
-            self.maria_config.write(configfile)
+def _log_migration_order(self, table_order: List[str]) -> None:
+    """
+    Log the migration order to maria_config.ini in the format:
+    [migration]
+    table1
+    table2
+    table3
+    """
+    # Read the existing config file
+    import configparser
+    config = configparser.ConfigParser(allow_no_value=True)
+    if os.path.exists('maria_config.ini'):
+        config.read('maria_config.ini')
+    
+    # Ensure the migration section exists
+    if not config.has_section('migration'):
+        config.add_section('migration')
+    else:
+        # Clear existing entries in the migration section
+        config.remove_section('migration')
+        config.add_section('migration')
+    
+    # Add each table on a new line
+    for table in table_order:
+        config.set('migration', table)
+    
+    # Write the updated config back to the file
+    with open('maria_config.ini', 'w') as configfile:
+        config.write(configfile)
+    
+    self.logger.info(f"Migration order saved to maria_config.ini")

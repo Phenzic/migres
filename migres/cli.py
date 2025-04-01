@@ -31,8 +31,9 @@ def main():
     
     run_parser.add_argument('--no-download', action='store_true', 
                            help='Process and migrate data without saving files locally')
-    sort_parser.add_argument('--database', '-d', required=True, help='MariaDB database to analyze')
-    sort_parser.add_argument('--apply', '-a', action='store_true', help='Apply the computed order to migration config')
+    sort_parser.add_argument('--apply', '-a', action='store_true', 
+                         help='Apply the computed order to migration config (default: True)', 
+                         default=True)
     
     # Parse arguments
     args = parser.parse_args()
@@ -89,12 +90,7 @@ def main():
         migrator.run(no_download=getattr(args, 'no_download', False))
         return 0
     elif args.command == 'sort':
-        # Your sort command logic here
-        if not args.database:
-            print("Error: Database name is required for sort command")
-            return 1
-        
-        return sort_tables(args.database, args.apply)
+        return sort_tables(args.apply)
     else:
         # If no command is provided, show version
         print(f"migres version {__version__}")
@@ -123,7 +119,7 @@ def list_mariadb_tables():
     
     if not db_vars:
         print("Error: No MariaDB databases defined in .env file")
-        print("Define at least one database with MARIADB_DATABASE1, MARIADB_DATABASE2, etc.")
+        print("Define at least one database with MARIADB_DATABASE, MARIADB_DATABASE2, etc.")
         return 1
     
     # Connect to each database and list tables
@@ -311,12 +307,12 @@ def test_mariadb_connection():
     host = os.getenv("MARIADB_HOST")
     user = os.getenv("MARIADB_USER")
     password = os.getenv("MARIADB_PASSWORD")
-    database = os.getenv("MARIADB_DATABASE1")
+    database = os.getenv("MARIADB_DATABASE")
     
     # Check if all required environment variables are set
     if not all([host, user, password, database]):
         print("Error: Missing MariaDB configuration in .env file")
-        print("Required variables: MARIADB_HOST, MARIADB_USER, MARIADB_PASSWORD, MARIADB_DATABASE1")
+        print("Required variables: MARIADB_HOST, MARIADB_USER, MARIADB_PASSWORD, MARIADB_DATABASE")
         return 1
     
     try:
@@ -456,7 +452,7 @@ primary_key = id
 MARIADB_HOST=localhost
 MARIADB_USER=root
 MARIADB_PASSWORD=yourpassword
-MARIADB_DATABASE1=source_db
+MARIADB_DATABASE=source_db
 SUPABASE_CONNECTION_STRING=postgresql://user:password@host:5432/db
 """)
         print("Created .env.example - rename to .env and fill in your credentials")
@@ -478,7 +474,7 @@ def load_config():
     
     return config
 
-def sort_tables(database_name, apply_order=False):
+def sort_tables(apply_order=True):
     """Sort tables based on their dependencies using topology sort"""
     from connectors.mariadb_connector import MariaDBConnector
     from connectors.postgres_connector import PostgresConnector
@@ -491,14 +487,15 @@ def sort_tables(database_name, apply_order=False):
     host = os.getenv("MARIADB_HOST")
     user = os.getenv("MARIADB_USER")
     password = os.getenv("MARIADB_PASSWORD")
+    database = os.getenv("MARIADB_DATABASE")
     
-    if not all([host, user, password]):
+    if not all([host, user, password, database]):
         print("Error: Missing MariaDB configuration in .env file")
-        print("Required variables: MARIADB_HOST, MARIADB_USER, MARIADB_PASSWORD")
+        print("Required variables: MARIADB_HOST, MARIADB_USER, MARIADB_PASSWORD, MARIADB_DATABASE")
         return 1
     
     # Create a temporary config
-    db_config = DatabaseConfig(host=host, user=user, password=password, database=database_name)
+    db_config = DatabaseConfig(host=host, user=user, password=password, database=database)
     mariadb_connector = MariaDBConnector(db_config)
     
     # Create a dummy postgres connector (not actually used for connections)
@@ -517,8 +514,8 @@ def sort_tables(database_name, apply_order=False):
         sorter = TableSorter(mariadb_connector, postgres_connector, maria_config)
         
         # Get migration order
-        print(f"Analyzing database '{database_name}' for optimal migration order...")
-        migration_order = sorter.get_migration_order(database_name)
+        print(f"Analyzing database '{database}' for optimal migration order...")
+        migration_order = sorter.get_migration_order(database)
         
         # Print the results
         print("\nOptimal migration order:")

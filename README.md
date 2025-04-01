@@ -31,7 +31,7 @@ migres init
 MARIADB_HOST=localhost
 MARIADB_USER=root
 MARIADB_PASSWORD=yourpassword 
-MARIADB_DATABASE1=source_db
+MARIADB_DATABASE=source_db
 SUPABASE_CONNECTION_STRING=postgresql://user:password@host:5432/db
 ```
 
