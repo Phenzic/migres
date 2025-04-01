@@ -98,16 +98,37 @@ class MariaDBConnector:
             cursor.close()
             return None
 
-    def get_tables(self):
-        """Get all tables in the current database"""
-        if not self.connection:
+    def select_database(self, database_name: str) -> None:
+        """
+        Switch to a different database
+        
+        Args:
+            database_name: Name of the database to select
+        """
+        if not self.connection or not self.connection.open:
             self.connect()
         
-        try:
-            with self.connection.cursor() as cursor:
-                cursor.execute("SHOW TABLES")
-                tables = [row[0] for row in cursor.fetchall()]
-                return tables
-        except Exception as e:
-            print(f"Error getting tables: {str(e)}")
-            return []
+        cursor = self.connection.cursor()
+        cursor.execute(f"USE {database_name}")
+        self.connection.commit()
+        cursor.close()
+        
+        # Update the current database name
+        self.config.database = database_name
+
+    def get_tables(self) -> List[str]:
+        """
+        Get all tables in the current database
+        
+        Returns:
+            List of table names
+        """
+        if not self.connection or not self.connection.open:
+            self.connect()
+        
+        cursor = self.connection.cursor()
+        cursor.execute("SHOW TABLES")
+        tables = [row[0] for row in cursor.fetchall()]
+        cursor.close()
+        
+        return tables

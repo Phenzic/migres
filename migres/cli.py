@@ -31,9 +31,6 @@ def main():
     
     run_parser.add_argument('--no-download', action='store_true', 
                            help='Process and migrate data without saving files locally')
-    sort_parser.add_argument('--apply', '-a', action='store_true', 
-                         help='Apply the computed order to migration config (default: True)', 
-                         default=True)
     
     # Parse arguments
     args = parser.parse_args()
@@ -90,7 +87,7 @@ def main():
         migrator.run(no_download=getattr(args, 'no_download', False))
         return 0
     elif args.command == 'sort':
-        return sort_tables(args.apply)
+        return sort_tables()
     else:
         # If no command is provided, show version
         print(f"migres version {__version__}")
@@ -474,7 +471,7 @@ def load_config():
     
     return config
 
-def sort_tables(apply_order=True):
+def sort_tables():
     """Sort tables based on their dependencies using topology sort"""
     from connectors.mariadb_connector import MariaDBConnector
     from connectors.postgres_connector import PostgresConnector
@@ -487,11 +484,11 @@ def sort_tables(apply_order=True):
     host = os.getenv("MARIADB_HOST")
     user = os.getenv("MARIADB_USER")
     password = os.getenv("MARIADB_PASSWORD")
-    database = os.getenv("MARIADB_DATABASE")
+    database = os.getenv("MARIADB_DATABASE1")  # Using MARIADB_DATABASE1 as in your .env
     
     if not all([host, user, password, database]):
         print("Error: Missing MariaDB configuration in .env file")
-        print("Required variables: MARIADB_HOST, MARIADB_USER, MARIADB_PASSWORD, MARIADB_DATABASE")
+        print("Required variables: MARIADB_HOST, MARIADB_USER, MARIADB_PASSWORD, MARIADB_DATABASE1")
         return 1
     
     # Create a temporary config
@@ -502,7 +499,7 @@ def sort_tables(apply_order=True):
     postgres_connector = PostgresConnector("dummy")
     
     # Load maria_config.ini
-    maria_config = configparser.ConfigParser()
+    maria_config = configparser.ConfigParser(allow_no_value=True)
     if os.path.exists("maria_config.ini"):
         maria_config.read("maria_config.ini")
     
@@ -523,11 +520,10 @@ def sort_tables(apply_order=True):
         for i, table in enumerate(migration_order, 1):
             print(f"{i}. {table}")
         
-        # Save to config if requested
-        if apply_order:
-            print("\nSaving migration order to maria_config.ini...")
-            # The sorter already saves the order to the config
-            print("Done! Migration order has been saved.")
+        # Always save to config
+        print("\nSaving migration order to maria_config.ini...")
+        sorter.log_migration_order(migration_order)
+        print("Done! Migration order has been saved.")
         
         return 0
         

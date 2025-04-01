@@ -1,6 +1,7 @@
 import logging
 import os
 from typing import Dict, List, Set, Tuple
+import configparser
 
 class TableSorter:
     """
@@ -20,13 +21,24 @@ class TableSorter:
         
         Args:
             db_name: The database name to analyze
-            
+                
         Returns:
             List of table names in the order they should be migrated
         """
         # Get all tables
-        self.mariadb.select_database(db_name)
-        all_tables = self.mariadb.get_tables()
+        try:
+            self.mariadb.select_database(db_name)
+            all_tables = self.mariadb.get_tables()
+        except Exception as e:
+            self.logger.error(f"Error getting tables: {str(e)}")
+            # Fallback: try to get tables with a direct query
+            query = "SHOW TABLES"
+            result = self.mariadb.execute_query(query)
+            if result is not None and not result.empty:
+                all_tables = result.iloc[:, 0].tolist()
+            else:
+                self.logger.error("Could not retrieve tables from database")
+                return []
         
         # Get configuration overrides
         force_early = self._get_force_early_tables()
@@ -35,7 +47,7 @@ class TableSorter:
         
         # Remove tables that have explicit ordering from topology sort
         tables_to_sort = [t for t in all_tables if t not in force_early and t not in force_late 
-                          and t not in custom_order]
+                        and t not in custom_order]
         
         # Get dependency graph
         dependencies = self._build_dependency_graph(db_name, tables_to_sort)
@@ -47,10 +59,10 @@ class TableSorter:
         final_order = force_early + sorted_tables + custom_order + force_late
         
         # Log the migration order
-        self._log_migration_order(final_order)
+        self.log_migration_order(final_order)
         
         return final_order
-    
+        
     def _get_force_early_tables(self) -> List[str]:
         """Get tables that should be migrated first"""
         if not self.maria_config.has_section('migration'):
@@ -152,34 +164,33 @@ class TableSorter:
         # Reverse the result to get correct order (dependencies first)
         return list(reversed(result))
     
-def _log_migration_order(self, table_order: List[str]) -> None:
-    """
-    Log the migration order to maria_config.ini in the format:
-    [migration]
-    table1
-    table2
-    table3
-    """
-    # Read the existing config file
-    import configparser
-    config = configparser.ConfigParser(allow_no_value=True)
-    if os.path.exists('maria_config.ini'):
-        config.read('maria_config.ini')
-    
-    # Ensure the migration section exists
-    if not config.has_section('migration'):
-        config.add_section('migration')
-    else:
-        # Clear existing entries in the migration section
-        config.remove_section('migration')
-        config.add_section('migration')
-    
-    # Add each table on a new line
-    for table in table_order:
-        config.set('migration', table)
-    
-    # Write the updated config back to the file
-    with open('maria_config.ini', 'w') as configfile:
-        config.write(configfile)
-    
-    self.logger.info(f"Migration order saved to maria_config.ini")
+    def log_migration_order(self, table_order: List[str]) -> None:
+        """
+        Log the migration order to maria_config.ini in the format:
+        [migration]
+        table1
+        table2
+        table3
+        """
+        # Read the existing config file
+        config = configparser.ConfigParser(allow_no_value=True)
+        if os.path.exists('maria_config.ini'):
+            config.read('maria_config.ini')
+        
+        # Ensure the migration section exists
+        if not config.has_section('migration'):
+            config.add_section('migration')
+        else:
+            # Clear existing entries in the migration section
+            config.remove_section('migration')
+            config.add_section('migration')
+        
+        # Add each table on a new line
+        for table in table_order:
+            config.set('migration', table)
+        
+        # Write the updated config back to the file
+        with open('maria_config.ini', 'w') as configfile:
+            config.write(configfile)
+        
+        self.logger.info(f"Migration order saved to maria_config.ini")
