@@ -6,14 +6,20 @@ from models.migration import MigrationConfig
 from dotenv import load_dotenv
 import os
 import sys
+import configparser
 
 __version__ = "0.1.0.dev1"  # Match the version in pyproject.toml
 
 def main():
     parser = argparse.ArgumentParser(description='Database migration tool')
     parser.add_argument('--version', '-v', action='store_true', help='Show version information')
-    parser.add_argument('--test', '-t', nargs='?', const='both', choices=['both', 'maria', 'postgres'], 
-                        help='Test database connection (both, maria or postgres)')
+    parser.add_argument('--test', '-t', nargs='?', const='all', choices=['all', 'maria', 'postgres'], 
+                        help='Test database connection (all, maria or postgres)')
+    parser.add_argument('--maria-table', choices=['ls'], help='List all tables in MariaDB')
+    parser.add_argument('--maria-exclude', type=str, help='Comma-separated list of tables to exclude from migration')
+    parser.add_argument('--maria-exclude-columns', type=str, 
+                        help='Comma-separated list of columns to exclude in format "table.column"')
+    
     subparsers = parser.add_subparsers(dest='command', help='Commands')
     
     # Init command
@@ -34,13 +40,25 @@ def main():
     
     # Handle test connection command
     if args.test:
-        if args.test == 'both':
-            # Test both connections
+        if args.test == 'all':
+            # Test all connections
             maria_result = test_connection('maria')
             postgres_result = test_connection('postgres')
             return 1 if maria_result == 1 or postgres_result == 1 else 0
         else:
             return test_connection(args.test)
+    
+    # Handle listing MariaDB tables
+    if args.maria_table == 'ls':
+        return list_mariadb_tables()
+    
+    # Handle excluding tables - this should work regardless of other commands
+    if args.maria_exclude:
+        return run_migration_with_exclusions(args.maria_exclude)
+    
+    # Handle excluding columns - this should work regardless of other commands
+    if args.maria_exclude_columns:
+        return run_migration_with_column_exclusions(args.maria_exclude_columns)
     
     # Handle commands
     if args.command == 'init':
@@ -64,6 +82,189 @@ def main():
         print(f"migres version {__version__}")
         print("A database migration tool")
         return 0
+
+def list_mariadb_tables():
+    """List all tables in MariaDB databases"""
+    from connectors.mariadb_connector import MariaDBConnector
+    from models.migration import DatabaseConfig
+    
+    load_dotenv()
+    
+    # Get MariaDB connection details from environment
+    host = os.getenv("MARIADB_HOST")
+    user = os.getenv("MARIADB_USER")
+    password = os.getenv("MARIADB_PASSWORD")
+    
+    if not all([host, user, password]):
+        print("Error: Missing MariaDB configuration in .env file")
+        print("Required variables: MARIADB_HOST, MARIADB_USER, MARIADB_PASSWORD")
+        return 1
+    
+    # Find all MariaDB database environment variables
+    db_vars = [var for var in os.environ if var.startswith("MARIADB_DATABASE")]
+    
+    if not db_vars:
+        print("Error: No MariaDB databases defined in .env file")
+        print("Define at least one database with MARIADB_DATABASE1, MARIADB_DATABASE2, etc.")
+        return 1
+    
+    # Connect to each database and list tables
+    for db_var in sorted(db_vars):
+        db_name = os.getenv(db_var)
+        if not db_name:
+            continue
+        
+        print(f"\nDatabase: {db_name}")
+        print("-" * 40)
+        
+        try:
+            # Create a temporary config
+            db_config = DatabaseConfig(host=host, user=user, password=password, database=db_name)
+            connector = MariaDBConnector(db_config)
+            connector.connect()
+            
+            # Get tables
+            tables = connector.get_tables()
+            
+            if not tables:
+                print("No tables found")
+            else:
+                for i, table in enumerate(sorted(tables), 1):
+                    print(f"{i}. {table}")
+            
+            connector.disconnect()
+            
+        except Exception as e:
+            print(f"Error connecting to database {db_name}: {str(e)}")
+    
+    return 0
+
+def run_migration_with_exclusions(exclusions, no_download=False):
+    """Run migration with table exclusions"""
+    # Parse the comma-separated list, handling spaces
+    if exclusions.startswith('"') and exclusions.endswith('"'):
+        exclusions = exclusions[1:-1]  # Remove surrounding quotes
+    
+    excluded_tables = [table.strip() for table in exclusions.split(',')]
+    
+    # Check if maria_config.ini exists
+    if os.path.exists("maria_config.ini"):
+        # Read the file as text to preserve existing content
+        with open("maria_config.ini", "r") as f:
+            content = f.read()
+        
+        # Check if [tables] section exists
+        if "[tables]" not in content:
+            # Add [tables] section if it doesn't exist
+            content += "\n[tables]\n"
+        else:
+            # Find the position of [tables] section
+            tables_pos = content.find("[tables]")
+            next_section_pos = content.find("[", tables_pos + 1)
+            
+            # If there's another section after [tables]
+            if next_section_pos != -1:
+                # Insert our entries before the next section
+                section_content = content[tables_pos:next_section_pos]
+                rest_content = content[next_section_pos:]
+                
+                # Add our entries to the section
+                for table in excluded_tables:
+                    if table and table.strip() not in section_content:
+                        section_content += f"{table.strip()}\n"
+                
+                # Combine everything
+                content = content[:tables_pos] + section_content + rest_content
+            else:
+                # [tables] is the last section, append to the end
+                for table in excluded_tables:
+                    if table and table.strip() not in content:
+                        content += f"{table.strip()}\n"
+    else:
+        # Create a new file with proper format
+        content = """
+[tables]
+"""
+        # Add excluded tables
+        for table in excluded_tables:
+            if table:  # Skip empty strings
+                content += f"{table.strip()}\n"
+        
+        # Add columns section
+        content += """
+[columns]
+"""
+    
+    # Write the updated content back to the file
+    with open("maria_config.ini", "w") as f:
+        f.write(content)
+    
+    print(f"Successfully appended excluded tables: {', '.join(excluded_tables)}")
+    
+    # Don't run the migration, just update the config
+    return 0
+
+def run_migration_with_column_exclusions(exclusions, no_download=False):
+    """Run migration with column exclusions"""
+    # Parse the comma-separated list, handling spaces
+    if exclusions.startswith('"') and exclusions.endswith('"'):
+        exclusions = exclusions[1:-1]  # Remove surrounding quotes
+    
+    excluded_columns = [column.strip() for column in exclusions.split(',')]
+    
+    # Check if maria_config.ini exists
+    if os.path.exists("maria_config.ini"):
+        # Read the file as text to preserve existing content
+        with open("maria_config.ini", "r") as f:
+            content = f.read()
+        
+        # Check if [columns] section exists
+        if "[columns]" not in content:
+            # Add [columns] section if it doesn't exist
+            content += "\n[columns]\n"
+        else:
+            # Find the position of [columns] section
+            columns_pos = content.find("[columns]")
+            next_section_pos = content.find("[", columns_pos + 1)
+            
+            # If there's another section after [columns]
+            if next_section_pos != -1:
+                # Insert our entries before the next section
+                section_content = content[columns_pos:next_section_pos]
+                rest_content = content[next_section_pos:]
+                
+                # Add our entries to the section
+                for column in excluded_columns:
+                    if column and column.strip() not in section_content:
+                        section_content += f"{column.strip()}\n"
+                
+                # Combine everything
+                content = content[:columns_pos] + section_content + rest_content
+            else:
+                # [columns] is the last section, append to the end
+                for column in excluded_columns:
+                    if column and column.strip() not in content:
+                        content += f"{column.strip()}\n"
+    else:
+        # Create a new file with proper format
+        content = """
+[tables]
+
+[columns]
+"""
+        # Add excluded columns
+        for column in excluded_columns:
+            if column:  # Skip empty strings
+                content += f"{column.strip()}\n"
+    
+    # Write the updated content back to the file
+    with open("maria_config.ini", "w") as f:
+        f.write(content)
+    
+    print(f"Successfully appended excluded columns: {', '.join(excluded_columns)}")
+    
+    # Don't run the migration, just update the config
+    return 0
 
 def test_connection(db_type):
     """Test database connection based on .env configuration
@@ -174,28 +375,41 @@ id = video
 user_id = user
 """,
         
+        "maria_config.ini": """
+
+[tables]
+logs_table
+temp_data
+
+[columns]
+users.password_hash
+users.session_token
+posts.internal_id
+""",
+        
         "table_schema.ini": """
+# Table Schema Configuration
+# Defines the structure and constraints for PostgreSQL tables
+
 [posts]
+# Column definitions
 id = UUID PRIMARY KEY
 user_id = UUID
 name = TEXT
 content = TEXT
 created_at = TIMESTAMP
-
-[videos]
-id = UUID PRIMARY KEY
-name = TEXT
-duration = FLOAT
-""",
-        
-        "constraints.ini": """
-[posts]
+# Constraints
 primary_key = id
 foreign_keys = 
     user_id -> auth.users(id)
 indexes = created_at
 
 [videos]
+# Column definitions
+id = UUID PRIMARY KEY
+name = TEXT
+duration = FLOAT
+# Constraints
 primary_key = id
 """
     }
@@ -208,7 +422,7 @@ primary_key = id
         else:
             print(f"{filename} already exists - skipping")
 
-    # Create .env.example if it doesn't exist
+    # Create .env
     if not Path(".env").exists() and not Path(".env.example").exists():
         with open(".env.example", 'w') as f:
             f.write("""# Database Connections

@@ -96,3 +96,17 @@ class MariaDBConnector:
             self.connection.commit()
             cursor.close()
             return None
+
+    def get_tables(self):
+        """Get all tables in the current database"""
+        if not self.connection:
+            self.connect()
+        
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute("SHOW TABLES")
+                tables = [row[0] for row in cursor.fetchall()]
+                return tables
+        except Exception as e:
+            print(f"Error getting tables: {str(e)}")
+            return []
