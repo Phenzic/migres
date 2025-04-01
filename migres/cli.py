@@ -4,12 +4,16 @@ from pathlib import Path
 from core.migrator import MigrationManager
 from models.migration import MigrationConfig
 from dotenv import load_dotenv
+import os
+import sys
 
 __version__ = "0.1.0.dev1"  # Match the version in pyproject.toml
 
 def main():
     parser = argparse.ArgumentParser(description='Database migration tool')
     parser.add_argument('--version', '-v', action='store_true', help='Show version information')
+    parser.add_argument('--test', '-t', nargs='?', const='both', choices=['both', 'maria', 'postgres'], 
+                        help='Test database connection (both, maria or postgres)')
     subparsers = parser.add_subparsers(dest='command', help='Commands')
     
     # Init command
@@ -27,6 +31,16 @@ def main():
     if hasattr(args, 'version') and args.version:
         print(f"migres version {__version__}")
         return 0
+    
+    # Handle test connection command
+    if args.test:
+        if args.test == 'both':
+            # Test both connections
+            maria_result = test_connection('maria')
+            postgres_result = test_connection('postgres')
+            return 1 if maria_result == 1 or postgres_result == 1 else 0
+        else:
+            return test_connection(args.test)
     
     # Handle commands
     if args.command == 'init':
@@ -50,6 +64,93 @@ def main():
         print(f"migres version {__version__}")
         print("A database migration tool")
         return 0
+
+def test_connection(db_type):
+    """Test database connection based on .env configuration
+    
+    Args:
+        db_type: Type of database to test ('maria' or 'postgres')
+    
+    Returns:
+        int: Exit code (0 for success, 1 for failure)
+    """
+    load_dotenv()
+    
+    if db_type == 'maria':
+        return test_mariadb_connection()
+    elif db_type == 'postgres':
+        return test_postgres_connection()
+    else:
+        print(f"Unknown database type: {db_type}")
+        return 1
+
+def test_mariadb_connection():
+    """Test MariaDB connection using credentials from .env file"""
+    import pymysql
+    
+    host = os.getenv("MARIADB_HOST")
+    user = os.getenv("MARIADB_USER")
+    password = os.getenv("MARIADB_PASSWORD")
+    database = os.getenv("MARIADB_DATABASE1")
+    
+    # Check if all required environment variables are set
+    if not all([host, user, password, database]):
+        print("Error: Missing MariaDB configuration in .env file")
+        print("Required variables: MARIADB_HOST, MARIADB_USER, MARIADB_PASSWORD, MARIADB_DATABASE1")
+        return 1
+    
+    try:
+        print(f"Attempting to connect to MariaDB at {host}...")
+        conn = pymysql.connect(
+            host=host,
+            user=user,
+            password=password,
+            database=database,
+            connect_timeout=10
+        )
+        
+        # Test the connection by executing a simple query
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT VERSION()")
+            version = cursor.fetchone()[0]
+        
+        conn.close()
+        print(f"✅ Successfully connected to MariaDB!")
+        print(f"Server version: {version}")
+        return 0
+    
+    except Exception as e:
+        print(f"❌ Failed to connect to MariaDB: {str(e)}")
+        return 1
+
+def test_postgres_connection():
+    """Test PostgreSQL connection using connection string from .env file"""
+    import psycopg2
+    
+    connection_string = os.getenv("SUPABASE_CONNECTION_STRING")
+    
+    if not connection_string:
+        print("Error: Missing PostgreSQL configuration in .env file")
+        print("Required variable: SUPABASE_CONNECTION_STRING")
+        return 1
+    
+    try:
+        print(f"Attempting to connect to PostgreSQL...")
+        conn = psycopg2.connect(connection_string)
+        
+        # Test the connection by executing a simple query
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT version()")
+            version = cursor.fetchone()[0]
+        
+        conn.close()
+        print(f"✅ Successfully connected to PostgreSQL!")
+        print(f"Server version: {version}")
+        return 0
+    
+    except Exception as e:
+        print(f"❌ Failed to connect to PostgreSQL: {str(e)}")
+        return 1
 
 def init_configs():
     """Create template config files in current directory"""
@@ -137,4 +238,4 @@ def load_config():
     return config
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
