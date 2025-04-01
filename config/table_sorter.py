@@ -1,4 +1,5 @@
 import logging
+import os
 from typing import Dict, List, Set, Tuple
 
 class TableSorter:
