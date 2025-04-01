@@ -5,6 +5,7 @@ from core.data_processor import DataProcessor
 from models.migration import MigrationConfig
 import configparser
 import os
+from config.table_sorter import TableSorter
 
 class MigrationManager:
     def __init__(self, config: MigrationConfig):
@@ -95,10 +96,23 @@ class MigrationManager:
             # Create tables in PostgreSQL
             self.postgres.create_tables(self.config.schema_definitions)
             
-            # Process each table
+            # Process each database
             for db_name, tables in tables_to_export.items():
                 self.mariadb.select_database(db_name)
-                for table in tables:
+                
+                # Use the table sorter to determine migration order
+                sorter = TableSorter(self.mariadb, self.postgres, self.maria_config)
+                ordered_tables = sorter.get_migration_order(db_name)
+                
+                # Filter ordered_tables to only include tables we want to export
+                ordered_tables = [t for t in ordered_tables if t in tables]
+                
+                print(f"Migrating tables in optimized order:")
+                for i, table in enumerate(ordered_tables, 1):
+                    print(f"{i}. {table}")
+                
+                # Process tables in the determined order
+                for table in ordered_tables:
                     columns = self._get_columns_to_export(table)
                     self._process_table(table, columns, no_download)
                     

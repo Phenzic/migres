@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 import os
 import sys
 import configparser
+from config.table_sorter import TableSorter
 
 __version__ = "0.1.0.dev1"  # Match the version in pyproject.toml
 
@@ -26,9 +27,12 @@ def main():
     init_parser = subparsers.add_parser('init', help='Initialize configuration files')
     # Run command
     run_parser = subparsers.add_parser('run', help='Run the migration')
+    sort_parser = subparsers.add_parser('sort', help='Determine optimal table migration order')
     
     run_parser.add_argument('--no-download', action='store_true', 
                            help='Process and migrate data without saving files locally')
+    sort_parser.add_argument('--database', '-d', required=True, help='MariaDB database to analyze')
+    sort_parser.add_argument('--apply', '-a', action='store_true', help='Apply the computed order to migration config')
     
     # Parse arguments
     args = parser.parse_args()
@@ -52,13 +56,20 @@ def main():
     if args.maria_table == 'ls':
         return list_mariadb_tables()
     
-    # Handle excluding tables - this should work regardless of other commands
-    if args.maria_exclude:
-        return run_migration_with_exclusions(args.maria_exclude)
+    # Handle excluding tables and columns - process both if present
+    tables_excluded = False
+    columns_excluded = False
     
-    # Handle excluding columns - this should work regardless of other commands
+    if args.maria_exclude:
+        run_migration_with_exclusions(args.maria_exclude)
+        tables_excluded = True
+        
     if args.maria_exclude_columns:
-        return run_migration_with_column_exclusions(args.maria_exclude_columns)
+        run_migration_with_column_exclusions(args.maria_exclude_columns)
+        columns_excluded = True
+        
+    if tables_excluded or columns_excluded:
+        return 0
     
     # Handle commands
     if args.command == 'init':
@@ -77,6 +88,13 @@ def main():
         migrator = MigrationManager(config)
         migrator.run(no_download=getattr(args, 'no_download', False))
         return 0
+    elif args.command == 'sort':
+        # Your sort command logic here
+        if not args.database:
+            print("Error: Database name is required for sort command")
+            return 1
+        
+        return sort_tables(args.database, args.apply)
     else:
         # If no command is provided, show version
         print(f"migres version {__version__}")
@@ -250,6 +268,7 @@ def run_migration_with_column_exclusions(exclusions, no_download=False):
         content = """
 [tables]
 
+
 [columns]
 """
         # Add excluded columns
@@ -385,6 +404,14 @@ temp_data
 users.password_hash
 users.session_token
 posts.internal_id
+
+[migration]
+# Tables that must be migrated first despite foreign key relationships
+force_early = audit_logs
+# Tables that must be migrated last
+force_late = temp_data
+# Custom ordering for specific tables (higher priority tables first)
+custom_order = categories, tags, comments
 """,
         
         "table_schema.ini": """
@@ -450,6 +477,68 @@ def load_config():
     config.mariadb_config = db_settings
     
     return config
+
+def sort_tables(database_name, apply_order=False):
+    """Sort tables based on their dependencies using topology sort"""
+    from connectors.mariadb_connector import MariaDBConnector
+    from connectors.postgres_connector import PostgresConnector
+    from models.migration import DatabaseConfig
+    import configparser
+    
+    load_dotenv()
+    
+    # Get MariaDB connection details from environment
+    host = os.getenv("MARIADB_HOST")
+    user = os.getenv("MARIADB_USER")
+    password = os.getenv("MARIADB_PASSWORD")
+    
+    if not all([host, user, password]):
+        print("Error: Missing MariaDB configuration in .env file")
+        print("Required variables: MARIADB_HOST, MARIADB_USER, MARIADB_PASSWORD")
+        return 1
+    
+    # Create a temporary config
+    db_config = DatabaseConfig(host=host, user=user, password=password, database=database_name)
+    mariadb_connector = MariaDBConnector(db_config)
+    
+    # Create a dummy postgres connector (not actually used for connections)
+    postgres_connector = PostgresConnector("dummy")
+    
+    # Load maria_config.ini
+    maria_config = configparser.ConfigParser()
+    if os.path.exists("maria_config.ini"):
+        maria_config.read("maria_config.ini")
+    
+    try:
+        # Connect to MariaDB
+        mariadb_connector.connect()
+        
+        # Create table sorter
+        sorter = TableSorter(mariadb_connector, postgres_connector, maria_config)
+        
+        # Get migration order
+        print(f"Analyzing database '{database_name}' for optimal migration order...")
+        migration_order = sorter.get_migration_order(database_name)
+        
+        # Print the results
+        print("\nOptimal migration order:")
+        print("-" * 40)
+        for i, table in enumerate(migration_order, 1):
+            print(f"{i}. {table}")
+        
+        # Save to config if requested
+        if apply_order:
+            print("\nSaving migration order to maria_config.ini...")
+            # The sorter already saves the order to the config
+            print("Done! Migration order has been saved.")
+        
+        return 0
+        
+    except Exception as e:
+        print(f"Error analyzing database: {str(e)}")
+        return 1
+    finally:
+        mariadb_connector.disconnect()
 
 if __name__ == "__main__":
     sys.exit(main())

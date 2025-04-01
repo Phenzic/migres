@@ -63,11 +63,12 @@ class MariaDBConnector:
         df = pd.DataFrame(data, columns=columns)
         return df
         
-    def execute_query(self, query: str) -> Optional[pd.DataFrame]:
+    def execute_query(self, query: str, params=None) -> Optional[pd.DataFrame]:
         """Execute a SQL query and return results as DataFrame
         
         Args:
             query: SQL query to execute
+            params: Parameters for the query
             
         Returns:
             DataFrame containing query results or None for non-SELECT queries
@@ -76,7 +77,7 @@ class MariaDBConnector:
             self.connect()
             
         cursor = self.connection.cursor()
-        cursor.execute(query)
+        cursor.execute(query, params)
         
         # Check if query returns data (SELECT queries)
         if cursor.description:
