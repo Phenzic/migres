@@ -55,8 +55,14 @@ class TableSorter:
         # Perform topological sort
         sorted_tables = self._topological_sort(tables_to_sort, dependencies)
         
-        # Combine all parts in the correct order
-        final_order = force_early + sorted_tables + custom_order + force_late
+        # Get excluded tables from config
+        excluded_tables = []
+        if self.maria_config.has_section('tables'):
+            excluded_tables = [table for table in self.maria_config.options('tables')]
+        
+        # Filter out excluded tables from the final order
+        final_order = [table for table in (force_early + sorted_tables + custom_order + force_late) 
+                      if table not in excluded_tables]
         
         # Log the migration order
         self.log_migration_order(final_order)
@@ -177,6 +183,11 @@ class TableSorter:
         if os.path.exists('maria_config.ini'):
             config.read('maria_config.ini')
         
+        # Get excluded tables from [tables] section
+        excluded_tables = []
+        if config.has_section('tables'):
+            excluded_tables = [table for table in config.options('tables')]
+        
         # Ensure the migration section exists
         if not config.has_section('migration'):
             config.add_section('migration')
@@ -185,9 +196,10 @@ class TableSorter:
             config.remove_section('migration')
             config.add_section('migration')
         
-        # Add each table on a new line
+        # Add each table on a new line, excluding tables in the [tables] section
         for table in table_order:
-            config.set('migration', table)
+            if table not in excluded_tables:
+                config.set('migration', table)
         
         # Write the updated config back to the file
         with open('maria_config.ini', 'w') as configfile:

@@ -3,9 +3,9 @@ import pandas as pd
 from typing import Dict, Any, List, Optional
 from models.migration import DatabaseConfig
 import pymysql
-from pathlib import Path
 import os
-from dotenv import load_dotenv
+from utils.env_loader import load_environment
+
 
 class MariaDBConnector:
     def __init__(self, config: DatabaseConfig):
@@ -140,27 +140,9 @@ class MariaDBConnector:
     @classmethod
     def test_connection(cls):
         """Test MariaDB connection using credentials from .env file"""
-        
-        # Try to load .env from multiple possible locations
-        env_paths = [
-            Path('./.env'),                    # Current directory
-            Path('../.env'),                   # Parent directory
-            Path.home() / '.env',              # Home directory
-            Path(__file__).parent / '.env',    # Script directory
-            Path(__file__).parent.parent / '.env'  # Parent of script directory
-        ]
-        
-        env_loaded = False
-        for env_path in env_paths:
-            if env_path.exists():
-                load_dotenv(dotenv_path=env_path)
-                print(f"Loaded environment from {env_path}")
-                env_loaded = True
-                break
-        
-        if not env_loaded:
-            print("Warning: No .env file found in common locations")
-        
+        if not load_environment():
+            print("Error: Could not find .env file in the current directory")
+            return 1    
         host = os.getenv("MARIADB_HOST")
         user = os.getenv("MARIADB_USER")
         password = os.getenv("MARIADB_PASSWORD")

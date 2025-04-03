@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "migres"
-version = "0.1.0.dev1"
+version = "0.1.1.dev1"
 description = "Database migration tool from for transfering database from MariaDB to PostgreSQL/Supabase"
 readme = "README.md"
 requires-python = ">=3.8"

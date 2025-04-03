@@ -1,23 +1,20 @@
 import argparse
-import shutil
+import sys
 from pathlib import Path
-from core.migrator import MigrationManager
-from models.migration import MigrationConfig
 from dotenv import load_dotenv
 import os
-import sys
-import configparser
-from config.table_sorter import TableSorter
-from connectors.postgres_connector import PostgresConnector
-from connectors.mariadb_connector import MariaDBConnector
-from models.migration import DatabaseConfig
-from config.config import DBSettings
-from models.migration import MigrationConfig
 
+from commands.init import init_configs
+from commands.test import test_connection
+from commands.sort import sort_tables
+from commands.run import run_migration
+from commands.list import list_mariadb_tables
+from commands.exclude import (
+    run_migration_with_exclusions,
+    run_migration_with_column_exclusions
+)
 
-
-
-__version__ = "0.1.0.dev1"  # Match the version in pyproject.toml
+__version__ = "0.1.1.dev1"  # Match the version in pyproject.toml
 
 def main():
     # Load environment variables at the very beginning
@@ -38,10 +35,10 @@ def main():
     init_parser = subparsers.add_parser('init', help='Initialize configuration files')
     # Run command
     run_parser = subparsers.add_parser('run', help='Run the migration')
-    sort_parser = subparsers.add_parser('sort', help='Determine optimal table migration order')
-    
     run_parser.add_argument('--no-download', action='store_true', 
                            help='Process and migrate data without saving files locally')
+    # Sort command
+    sort_parser = subparsers.add_parser('sort', help='Determine optimal table migration order')
     
     # Parse arguments
     args = parser.parse_args()
@@ -59,12 +56,7 @@ def main():
             postgres_result = test_connection('postgres')
             return 1 if maria_result == 1 or postgres_result == 1 else 0
         else:
-            if args.test == 'postgres':
-                postgres_result = test_connection('postgres')
-                return postgres_result
-            else:
-                maria_result = test_connection('maria')
-                return maria_result
+            return test_connection(args.test)
     
     # Handle listing MariaDB tables
     if args.maria_table == 'ls':
@@ -87,21 +79,10 @@ def main():
     
     # Handle commands
     if args.command == 'init':
-        # Your initialization logic here
         print("Initializing configuration files...")
-        init_configs()
-        return 0
+        return init_configs()
     elif args.command == 'run':
-        # Your migration logic here
-        config = load_config()
-        if not config or not hasattr(config, 'mariadb_config') or config.mariadb_config is None:
-            print("Error: MariaDB configuration is missing or invalid.")
-            print("Please check your configuration or run 'migres init' to create a new configuration.")
-            return 1
-        
-        migrator = MigrationManager(config)
-        migrator.run(no_download=getattr(args, 'no_download', False))
-        return 0
+        return run_migration(args.no_download if hasattr(args, 'no_download') else False)
     elif args.command == 'sort':
         return sort_tables()
     else:
@@ -109,394 +90,6 @@ def main():
         print(f"migres version {__version__}")
         print("A database migration tool")
         return 0
-
-def list_mariadb_tables():
-    """List all tables in MariaDB databases"""
-
-    
-    load_dotenv()
-    
-    # Get MariaDB connection details from environment
-    host = os.getenv("MARIADB_HOST")
-    user = os.getenv("MARIADB_USER")
-    password = os.getenv("MARIADB_PASSWORD")
-    
-    if not all([host, user, password]):
-        print("Error: Missing MariaDB configuration in .env file")
-        print("Required variables: MARIADB_HOST, MARIADB_USER, MARIADB_PASSWORD")
-        return 1
-    
-    # Find all MariaDB database environment variables
-    db_vars = [var for var in os.environ if var.startswith("MARIADB_DATABASE1")]
-    
-    if not db_vars:
-        print("Error: No MariaDB databases defined in .env file")
-        print("Define at least one database with MARIADB_DATABASE1, MARIADB_DATABASE2, etc.")
-        return 1
-    
-    # Connect to each database and list tables
-    for db_var in sorted(db_vars):
-        db_name = os.getenv(db_var)
-        if not db_name:
-            continue
-        
-        print(f"\nDatabase: {db_name}")
-        print("-" * 40)
-        
-        try:
-            # Create a temporary config
-            db_config = DatabaseConfig(host=host, user=user, password=password, database=db_name)
-            connector = MariaDBConnector(db_config)
-            connector.connect()
-            
-            # Get tables
-            tables = connector.get_tables()
-            
-            if not tables:
-                print("No tables found")
-            else:
-                for i, table in enumerate(sorted(tables), 1):
-                    print(f"{i}. {table}")
-            
-            connector.disconnect()
-            
-        except Exception as e:
-            print(f"Error connecting to database {db_name}: {str(e)}")
-    
-    return 0
-
-def run_migration_with_exclusions(exclusions, no_download=False):
-    """Run migration with table exclusions"""
-    # Parse the comma-separated list, handling spaces
-    if exclusions.startswith('"') and exclusions.endswith('"'):
-        exclusions = exclusions[1:-1]  # Remove surrounding quotes
-    
-    excluded_tables = [table.strip() for table in exclusions.split(',')]
-    
-    # Check if maria_config.ini exists
-    if os.path.exists("maria_config.ini"):
-        # Read the file as text to preserve existing content
-        with open("maria_config.ini", "r") as f:
-            content = f.read()
-        
-        # Check if [tables] section exists
-        if "[tables]" not in content:
-            # Add [tables] section if it doesn't exist
-            content += "\n[tables]\n"
-        else:
-            # Find the position of [tables] section
-            tables_pos = content.find("[tables]")
-            next_section_pos = content.find("[", tables_pos + 1)
-            
-            # If there's another section after [tables]
-            if next_section_pos != -1:
-                # Insert our entries before the next section
-                section_content = content[tables_pos:next_section_pos]
-                rest_content = content[next_section_pos:]
-                
-                # Add our entries to the section
-                for table in excluded_tables:
-                    if table and table.strip() not in section_content:
-                        section_content += f"{table.strip()}\n"
-                
-                # Combine everything
-                content = content[:tables_pos] + section_content + rest_content
-            else:
-                # [tables] is the last section, append to the end
-                for table in excluded_tables:
-                    if table and table.strip() not in content:
-                        content += f"{table.strip()}\n"
-    else:
-        content = """
-[tables]
-"""
-        # Add excluded tables
-        for table in excluded_tables:
-            if table:  # Skip empty strings
-                content += f"{table.strip()}\n"
-        
-        # Add columns section
-        content += """
-[columns]
-"""
-    
-    # Write the updated content back to the file
-    with open("maria_config.ini", "w") as f:
-        f.write(content)
-    
-    print(f"Successfully appended excluded tables: {', '.join(excluded_tables)}")
-    return 0
-
-def run_migration_with_column_exclusions(exclusions, no_download=False):
-    """Run migration with column exclusions"""
-    # Parse the comma-separated list, handling spaces
-    if exclusions.startswith('"') and exclusions.endswith('"'):
-        exclusions = exclusions[1:-1]  # Remove surrounding quotes
-    
-    excluded_columns = [column.strip() for column in exclusions.split(',')]
-    
-    # Check if maria_config.ini exists
-    if os.path.exists("maria_config.ini"):
-        # Read the file as text to preserve existing content
-        with open("maria_config.ini", "r") as f:
-            content = f.read()
-        
-        # Check if [columns] section exists
-        if "[columns]" not in content:
-            # Add [columns] section if it doesn't exist
-            content += "\n[columns]\n"
-        else:
-            # Find the position of [columns] section
-            columns_pos = content.find("[columns]")
-            next_section_pos = content.find("[", columns_pos + 1)
-            
-            # If there's another section after [columns]
-            if next_section_pos != -1:
-                # Insert our entries before the next section
-                section_content = content[columns_pos:next_section_pos]
-                rest_content = content[next_section_pos:]
-                
-                # Add our entries to the section
-                for column in excluded_columns:
-                    if column and column.strip() not in section_content:
-                        section_content += f"{column.strip()}\n"
-                
-                # Combine everything
-                content = content[:columns_pos] + section_content + rest_content
-            else:
-                # [columns] is the last section, append to the end
-                for column in excluded_columns:
-                    if column and column.strip() not in content:
-                        content += f"{column.strip()}\n"
-    else:
-        # Create a new file with proper format
-        content = """
-[tables]
-
-
-[columns]
-"""
-        for column in excluded_columns:
-            if column:
-                content += f"{column.strip()}\n"
-    
-    with open("maria_config.ini", "w") as f:
-        f.write(content)
-    
-    print(f"Successfully appended excluded columns: {', '.join(excluded_columns)}")
-    
-    return 0
-
-def test_connection(db_type):
-    """Test database connection based on .env configuration
-    
-    Args:
-        db_type: Type of database to test ('maria' or 'postgres')
-    
-    Returns:
-        int: Exit code (0 for success, 1 for failure)
-    """
-    load_dotenv()
-    
-    if db_type == 'maria':
-        return MariaDBConnector.test_connection()
-    elif db_type == 'postgres':
-        return PostgresConnector.test_connection()
-    else:
-        print(f"Unknown database type: {db_type}")
-        return 1
-
-def init_configs():
-    """Create template config files in current directory"""
-    config_templates = {
-        "type_config.ini": """
-[posts]
-id = uuid
-created_at = timestamp
-
-[videos]
-duration = float
-censor = boolean
-""",
-        
-        "uuid_config.ini": """
-[posts]
-id = post
-
-[videos]  
-id = video
-user_id = user
-""",
-        
-        "maria_config.ini": """
-
-[tables]
-logs_table
-temp_data
-
-[columns]
-users.password_hash
-users.session_token
-posts.internal_id
-
-[migration]
-# Tables that must be migrated first despite foreign key relationships
-force_early = audit_logs
-# Tables that must be migrated last
-force_late = temp_data
-# Custom ordering for specific tables (higher priority tables first)
-custom_order = categories, tags, comments
-""",
-        
-        "table_schema.ini": """
-# Table Schema Configuration
-# Defines the structure and constraints for PostgreSQL tables
-
-[posts]
-# Column definitions
-id = UUID PRIMARY KEY
-user_id = UUID
-name = TEXT
-content = TEXT
-created_at = TIMESTAMP
-# Constraints
-primary_key = id
-foreign_keys = 
-    user_id -> auth.users(id)
-indexes = created_at
-
-[videos]
-# Column definitions
-id = UUID PRIMARY KEY
-name = TEXT
-duration = FLOAT
-# Constraints
-primary_key = id
-"""
-    }
-
-    for filename, content in config_templates.items():
-        if not Path(filename).exists():
-            with open(filename, 'w') as f:
-                f.write(content.strip())
-            print(f"Created {filename}")
-        else:
-            print(f"{filename} already exists - skipping")
-
-    # Create .env
-    if not Path(".env").exists() and not Path(".env.example").exists():
-        with open(".env.example", 'w') as f:
-            f.write("""# Database Connections
-MARIADB_HOST=localhost
-MARIADB_USER=root
-MARIADB_PASSWORD=yourpassword
-MARIADB_DATABASE1=source_db
-SUPABASE_CONNECTION_STRING=postgresql://user:password@host:5432/db
-""")
-        print("Created .env.example - rename to .env and fill in your credentials")
-
-def load_config():
-    """Load configuration from environment variables"""
-
-    load_dotenv()
-    
-    # Create a config object with database settings
-    db_settings = DBSettings()
-    
-    # Create a migration config object
-    config = MigrationConfig()
-    config.mariadb_config = db_settings
-    
-    return config
-
-def sort_tables():
-    """Sort tables based on their dependencies using topology sort"""
-    import configparser
-    
-    load_dotenv()
-    
-    # Try to load .env from multiple possible locations
-    env_paths = [
-        Path('./.env'),                    # Current directory
-        Path('../.env'),                   # Parent directory
-        Path.home() / '.env',              # Home directory
-        Path(__file__).parent / '.env',    # Script directory
-        Path(__file__).parent.parent / '.env'  # Parent of script directory
-    ]
-    
-    env_loaded = False
-    for env_path in env_paths:
-        if env_path.exists():
-            load_dotenv(dotenv_path=env_path)
-            print(f"Loaded environment from {env_path}")
-            env_loaded = True
-            break
-    
-    if not env_loaded:
-        print("Warning: No .env file found in common locations")
-    
-    # Get MariaDB connection details from environment
-    host = os.getenv("MARIADB_HOST")
-    user = os.getenv("MARIADB_USER")
-    password = os.getenv("MARIADB_PASSWORD")
-    
-    # Try multiple possible database environment variables
-    database = None
-    for var in ["MARIADB_DATABASE1", "MARIADB_DATABASE", "MARIADB_DB"]:
-        database = os.getenv(var)
-        if database:
-            print(f"Using database from {var}: {database}")
-            break
-    
-    if not all([host, user, password, database]):
-        print("Error: Missing MariaDB configuration in .env file")
-        print(f"Current values: host={host}, user={user}, password={'*****' if password else None}, database={database}")
-        print("Required variables: MARIADB_HOST, MARIADB_USER, MARIADB_PASSWORD, and one of MARIADB_DATABASE1, MARIADB_DATABASE")
-        return 1
-    
-    # Create a temporary config
-    db_config = DatabaseConfig(host=host, user=user, password=password, database=database)
-    mariadb_connector = MariaDBConnector(db_config)
-    
-    # Create a dummy postgres connector (not actually used for connections)
-    postgres_connector = PostgresConnector("dummy")
-    
-    # Load maria_config.ini
-    maria_config = configparser.ConfigParser(allow_no_value=True)
-    if os.path.exists("maria_config.ini"):
-        maria_config.read("maria_config.ini")
-    
-    try:
-        # Connect to MariaDB
-        mariadb_connector.connect()
-        
-        # Create table sorter
-        sorter = TableSorter(mariadb_connector, postgres_connector, maria_config)
-        
-        # Get migration order
-        print(f"Analyzing database '{database}' for optimal migration order...")
-        migration_order = sorter.get_migration_order(database)
-        
-        # Print the results
-        print("\nOptimal migration order:")
-        print("-" * 40)
-        for i, table in enumerate(migration_order, 1):
-            print(f"{i}. {table}")
-        
-        # Always save to config
-        print("\nSaving migration order to maria_config.ini...")
-        sorter.log_migration_order(migration_order)
-        print("Done! Migration order has been saved.")
-        
-        return 0
-        
-    except Exception as e:
-        print(f"Error analyzing database: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return 1
-    finally:
-        mariadb_connector.disconnect()
 
 if __name__ == "__main__":
     sys.exit(main())
