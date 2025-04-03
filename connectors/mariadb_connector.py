@@ -2,6 +2,10 @@ import pymysql
 import pandas as pd
 from typing import Dict, Any, List, Optional
 from models.migration import DatabaseConfig
+import pymysql
+from pathlib import Path
+import os
+from dotenv import load_dotenv
 
 class MariaDBConnector:
     def __init__(self, config: DatabaseConfig):
@@ -132,3 +136,62 @@ class MariaDBConnector:
         cursor.close()
         
         return tables
+
+    @classmethod
+    def test_connection(cls):
+        """Test MariaDB connection using credentials from .env file"""
+        
+        # Try to load .env from multiple possible locations
+        env_paths = [
+            Path('./.env'),                    # Current directory
+            Path('../.env'),                   # Parent directory
+            Path.home() / '.env',              # Home directory
+            Path(__file__).parent / '.env',    # Script directory
+            Path(__file__).parent.parent / '.env'  # Parent of script directory
+        ]
+        
+        env_loaded = False
+        for env_path in env_paths:
+            if env_path.exists():
+                load_dotenv(dotenv_path=env_path)
+                print(f"Loaded environment from {env_path}")
+                env_loaded = True
+                break
+        
+        if not env_loaded:
+            print("Warning: No .env file found in common locations")
+        
+        host = os.getenv("MARIADB_HOST")
+        user = os.getenv("MARIADB_USER")
+        password = os.getenv("MARIADB_PASSWORD")
+        database = os.getenv("MARIADB_DATABASE1")
+        
+        # Check if all required environment variables are set
+        if not all([host, user, password, database]):
+            print("Error: Missing MariaDB configuration in .env file")
+            print("Required variables: MARIADB_HOST, MARIADB_USER, MARIADB_PASSWORD, MARIADB_DATABASE1")
+            return 1
+        
+        try:
+            print(f"Attempting to connect to MariaDB at {host}...")
+            conn = pymysql.connect(
+                host=host,
+                user=user,
+                password=password,
+                database=database,
+                connect_timeout=10
+            )
+            
+            # Test the connection by executing a simple query
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT VERSION()")
+                version = cursor.fetchone()[0]
+            
+            conn.close()
+            print(f"✅ Successfully connected to MariaDB!")
+            print(f"Server version: {version}")
+            return 0
+        
+        except Exception as e:
+            print(f"❌ Failed to connect to MariaDB: {str(e)}")
+            return 1
